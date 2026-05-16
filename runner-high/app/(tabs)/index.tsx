@@ -78,7 +78,7 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.appName}>runner's high</Text>
-            <Text style={styles.tagline}>한강의 노을처럼</Text>
+            <Text style={styles.tagline}>즐거운 러닝, 즐거운 삶</Text>
           </View>
           <View style={styles.headerRight}>
             {gpsWeak && isRunning && (
