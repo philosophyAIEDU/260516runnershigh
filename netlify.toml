@@ -5,6 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  NPM_FLAGS    = "--legacy-peer-deps"
 
 # expo-router SPA: 알려지지 않은 경로를 index.html로 폴백
 [[redirects]]
