@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import * as secureStorage from '../../services/secureStorage';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { testApiKey } from '../../services/geminiService';
@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
 
   const loadKey = useCallback(async () => {
-    const key = await SecureStore.getItemAsync(SECURE_KEY);
+    const key = await secureStorage.getItem(SECURE_KEY);
     setStoredKey(key);
   }, []);
 
@@ -45,7 +45,7 @@ export default function SettingsScreen() {
     }
     setSaving(true);
     try {
-      await SecureStore.setItemAsync(SECURE_KEY, key);
+      await secureStorage.setItem(SECURE_KEY, key);
       setStoredKey(key);
       setInputKey('');
       setShowInput(false);
@@ -64,7 +64,7 @@ export default function SettingsScreen() {
         text: '삭제',
         style: 'destructive',
         onPress: async () => {
-          await SecureStore.deleteItemAsync(SECURE_KEY);
+          await secureStorage.deleteItem(SECURE_KEY);
           setStoredKey(null);
           setInputKey('');
           setShowInput(false);

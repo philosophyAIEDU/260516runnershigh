@@ -1,0 +1,13 @@
+[build]
+  base    = "runner-high"
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# expo-router SPA: 알려지지 않은 경로를 index.html로 폴백
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

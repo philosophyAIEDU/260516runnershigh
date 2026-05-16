@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import * as SecureStore from 'expo-secure-store';
 import { generateContent, GeminiMessage, GeminiError } from '../services/geminiService';
+import * as secureStorage from '../services/secureStorage';
 import { ChatMessage } from '../types';
 
 const SECURE_KEY = 'gemini_api_key';
@@ -11,7 +11,7 @@ export function useGemini() {
   const [error, setError] = useState<string | null>(null);
 
   const getApiKey = useCallback(async (): Promise<string | null> => {
-    return await SecureStore.getItemAsync(SECURE_KEY);
+    return await secureStorage.getItem(SECURE_KEY);
   }, []);
 
   const sendMessage = useCallback(
