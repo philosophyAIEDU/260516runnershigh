@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useGemini } from '../../hooks/useGemini';
@@ -33,15 +34,11 @@ export default function CoachScreen() {
     }, [refresh, getApiKey])
   );
 
-  // 최근 10개 기록을 컨텍스트로 생성
   const buildContext = useCallback(() => {
     const recent = runs.slice(0, 10);
     if (recent.length === 0) return '';
     const lines = recent
-      .map(
-        (r) =>
-          `날짜: ${formatDate(r.startTime)}, 거리: ${formatDistance(r.distance)}km, 시간: ${formatDuration(r.duration)}, 페이스: ${formatPace(r.pace)}/km`
-      )
+      .map((r) => `날짜: ${formatDate(r.startTime)}, 거리: ${formatDistance(r.distance)}km, 시간: ${formatDuration(r.duration)}, 페이스: ${formatPace(r.pace)}/km`)
       .join('\n');
     return `최근 달리기 기록:\n${lines}`;
   }, [runs]);
@@ -50,110 +47,144 @@ export default function CoachScreen() {
     const text = input.trim();
     if (!text || loading) return;
     setInput('');
-
     const context = buildContext();
-    const fullText = context
-      ? `${context}\n\n사용자 질문: ${text}`
-      : text;
-
+    const fullText = context ? `${context}\n\n사용자 질문: ${text}` : text;
     await sendMessage(fullText, SYSTEM_PROMPT);
   }, [input, loading, buildContext, sendMessage]);
 
   if (hasApiKey === false) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.noKeyContainer}>
-          <Ionicons name="key-outline" size={64} color={COLORS.border} />
-          <Text style={styles.noKeyTitle}>Gemini API Key 필요</Text>
+      <View style={styles.root}>
+        <LinearGradient colors={['#080C1E', '#0D1240', '#1A1F6E']} style={StyleSheet.absoluteFill} />
+        <SafeAreaView style={styles.noKeyContainer}>
+          <Text style={styles.noKeyEmoji}>🔑</Text>
+          <Text style={styles.noKeyTitle}>API Key가 필요합니다</Text>
           <Text style={styles.noKeyDesc}>
-            AI 코치를 사용하려면{'\n'}Gemini API Key를 설정해야 합니다.
+            Gemini API Key를 설정하면{'\n'}AI 러닝 코치를 이용할 수 있습니다.
           </Text>
           <TouchableOpacity
-            style={styles.settingsButton}
             onPress={() => router.push('/(tabs)/settings')}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.settingsButtonText}>설정으로 이동</Text>
+            <LinearGradient
+              colors={[COLORS.sunsetOrange, COLORS.sunsetPink]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.settingsButton}
+            >
+              <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.settingsButtonText}>설정으로 이동</Text>
+            </LinearGradient>
           </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={80}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>AI 러닝 코치</Text>
-          <TouchableOpacity onPress={clearMessages} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="refresh-outline" size={22} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {error && (
-          <View style={styles.errorBanner}>
-            <Ionicons name="alert-circle-outline" size={16} color={COLORS.danger} />
-            <Text style={styles.errorText}>{error}</Text>
+    <View style={styles.root}>
+      <LinearGradient colors={['#080C1E', '#0D1240', '#1A1F6E']} style={StyleSheet.absoluteFill} />
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={80}
+        >
+          {/* 헤더 */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.title}>AI 러닝 코치</Text>
+              <LinearGradient
+                colors={[COLORS.sunsetOrange, COLORS.sunsetPink]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.titleUnderline}
+              />
+            </View>
+            <TouchableOpacity onPress={clearMessages} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="refresh-outline" size={22} color={COLORS.textMuted} />
+            </TouchableOpacity>
           </View>
-        )}
 
-        <View style={styles.chatContainer}>
-          <CoachChat messages={messages} loading={loading} />
-        </View>
+          {/* 에러 */}
+          {error && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle-outline" size={15} color={COLORS.danger} />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder="코치에게 질문하세요..."
-            placeholderTextColor={COLORS.textMuted}
-            multiline
-            maxLength={500}
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-            blurOnSubmit={false}
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, (!input.trim() || loading) && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!input.trim() || loading}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="send" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          {/* 채팅 */}
+          <View style={styles.chatContainer}>
+            <CoachChat messages={messages} loading={loading} />
+          </View>
+
+          {/* 입력 */}
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              value={input}
+              onChangeText={setInput}
+              placeholder="코치에게 질문하세요..."
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              maxLength={500}
+              returnKeyType="send"
+              onSubmitEditing={handleSend}
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled={!input.trim() || loading}
+              activeOpacity={0.85}
+              style={styles.sendWrapper}
+            >
+              <LinearGradient
+                colors={input.trim() && !loading
+                  ? [COLORS.sunsetOrange, COLORS.sunsetPink]
+                  : [COLORS.border, COLORS.border]}
+                style={styles.sendButton}
+              >
+                <Ionicons name="send" size={18} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  root: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  safe: {
+    flex: 1,
   },
   container: {
     flex: 1,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 12,
   },
   title: {
     color: COLORS.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     letterSpacing: -0.5,
+  },
+  titleUnderline: {
+    width: 48,
+    height: 2,
+    borderRadius: 1,
+    marginTop: 6,
   },
   chatContainer: {
     flex: 1,
@@ -178,18 +209,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     maxHeight: 120,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderLight,
   },
+  sendWrapper: {},
   sendButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: COLORS.border,
   },
   errorBanner: {
     flexDirection: 'row',
@@ -198,10 +226,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
     padding: 12,
-    backgroundColor: '#2D1515',
+    backgroundColor: 'rgba(255,77,109,0.1)',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.danger,
+    borderColor: 'rgba(255,77,109,0.3)',
   },
   errorText: {
     color: COLORS.danger,
@@ -214,6 +242,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 16,
     paddingHorizontal: 40,
+  },
+  noKeyEmoji: {
+    fontSize: 52,
   },
   noKeyTitle: {
     color: COLORS.text,
@@ -229,9 +260,8 @@ const styles = StyleSheet.create({
   settingsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
+    gap: 10,
+    paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 30,
     marginTop: 8,

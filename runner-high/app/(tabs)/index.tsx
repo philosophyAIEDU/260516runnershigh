@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useRunTracking } from '../../hooks/useRunTracking';
@@ -19,7 +20,6 @@ export default function HomeScreen() {
     useRunTracking();
   const { addRun } = useRunHistory();
 
-  // 달리는 중 화면 꺼짐 방지
   useKeepAwake();
 
   const handleStart = useCallback(async () => {
@@ -27,14 +27,14 @@ export default function HomeScreen() {
     if (!success) {
       Alert.alert(
         'GPS 권한 필요',
-        '달리기 추적을 위해 위치 권한이 필요합니다. 설정에서 권한을 허용해주세요.',
+        '달리기 추적을 위해 위치 권한이 필요합니다.',
         [{ text: '확인' }]
       );
     }
   }, [start]);
 
   const handleFinish = useCallback(async () => {
-    Alert.alert('달리기 종료', '달리기를 종료하고 기록을 저장할까요?', [
+    Alert.alert('달리기 종료', '기록을 저장하고 종료할까요?', [
       { text: '취소', style: 'cancel' },
       {
         text: '종료',
@@ -56,26 +56,54 @@ export default function HomeScreen() {
   const isPaused = runState === 'PAUSED';
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+    <View style={styles.root}>
+      {/* 배경 그라디언트: 딥 네이비 → 선셋 */}
+      <LinearGradient
+        colors={['#080C1E', '#0D1240', '#1A1F6E']}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* 달리는 중일 때 선셋 글로우 */}
+      {isRunning && (
+        <LinearGradient
+          colors={['transparent', 'rgba(255,123,79,0.08)', 'rgba(255,107,157,0.05)']}
+          style={styles.glowOverlay}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 1 }}
+        />
+      )}
+
+      <SafeAreaView style={styles.safe}>
         {/* 헤더 */}
         <View style={styles.header}>
-          <Text style={styles.title}>Runner's High</Text>
-          {gpsWeak && isRunning && (
-            <View style={styles.gpsWarning}>
-              <Ionicons name="warning-outline" size={14} color={COLORS.warning} />
-              <Text style={styles.gpsWarningText}>GPS 신호 약함</Text>
+          <View>
+            <Text style={styles.appName}>runner's high</Text>
+            <Text style={styles.tagline}>한강의 노을처럼</Text>
+          </View>
+          <View style={styles.headerRight}>
+            {gpsWeak && isRunning && (
+              <View style={styles.gpsWarning}>
+                <Ionicons name="warning-outline" size={13} color={COLORS.pause} />
+                <Text style={styles.gpsWarningText}>GPS 약함</Text>
+              </View>
+            )}
+            {/* 상태 인디케이터 */}
+            <View style={[styles.statusBadge, isRunning && styles.statusBadgeActive, isPaused && styles.statusBadgePaused]}>
+              <View style={[styles.statusDot, isRunning && styles.statusDotActive, isPaused && styles.statusDotPaused]} />
+              <Text style={[styles.statusText, isRunning && styles.statusTextActive]}>
+                {isIdle ? 'READY' : isRunning ? 'RUNNING' : 'PAUSED'}
+              </Text>
             </View>
-          )}
+          </View>
         </View>
 
-        {/* 상태 표시 */}
-        <View style={styles.statusRow}>
-          <View style={[styles.statusDot, isRunning && styles.statusDotActive]} />
-          <Text style={styles.statusText}>
-            {isIdle ? '준비' : isRunning ? '달리는 중' : isPaused ? '일시정지' : '완료'}
-          </Text>
-        </View>
+        {/* 속도선 장식 */}
+        {(isRunning || isPaused) && (
+          <View style={styles.speedLines}>
+            <LinearGradient colors={['transparent', COLORS.sunsetOrange, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.speedLine} />
+            <LinearGradient colors={['transparent', COLORS.sunsetPink, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.speedLine, styles.speedLineSecond]} />
+          </View>
+        )}
 
         {/* 통계 */}
         <View style={styles.statsContainer}>
@@ -87,108 +115,188 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* 컨트롤 버튼 */}
+        {/* 컨트롤 */}
         <View style={styles.controls}>
           {isIdle && (
-            <TouchableOpacity style={styles.startButton} onPress={handleStart} activeOpacity={0.8}>
-              <Ionicons name="play" size={32} color="#FFFFFF" />
-              <Text style={styles.startButtonText}>달리기 시작</Text>
+            <TouchableOpacity onPress={handleStart} activeOpacity={0.85} style={styles.startWrapper}>
+              <LinearGradient
+                colors={[COLORS.sunsetOrange, COLORS.sunsetPink]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.startButton}
+              >
+                <Ionicons name="play" size={28} color="#FFFFFF" />
+                <Text style={styles.startButtonText}>달리기 시작</Text>
+              </LinearGradient>
+              {/* 글로우 효과 */}
+              <LinearGradient
+                colors={['rgba(255,123,79,0.4)', 'transparent']}
+                style={styles.startGlow}
+              />
             </TouchableOpacity>
           )}
 
           {isRunning && (
             <View style={styles.runningControls}>
-              <TouchableOpacity style={styles.pauseButton} onPress={pause} activeOpacity={0.8}>
-                <Ionicons name="pause" size={28} color={COLORS.pause} />
-                <Text style={styles.pauseButtonText}>일시정지</Text>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={pause} activeOpacity={0.8}>
+                <Ionicons name="pause" size={22} color={COLORS.pause} />
+                <Text style={[styles.secondaryBtnText, { color: COLORS.pause }]}>일시정지</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.stopButton} onPress={handleFinish} activeOpacity={0.8}>
-                <Ionicons name="stop" size={28} color={COLORS.danger} />
-                <Text style={styles.stopButtonText}>종료</Text>
+              <TouchableOpacity style={[styles.secondaryBtn, styles.stopBtn]} onPress={handleFinish} activeOpacity={0.8}>
+                <Ionicons name="stop" size={22} color={COLORS.danger} />
+                <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {isPaused && (
             <View style={styles.runningControls}>
-              <TouchableOpacity style={styles.resumeButton} onPress={resume} activeOpacity={0.8}>
-                <Ionicons name="play" size={28} color={COLORS.primary} />
-                <Text style={styles.resumeButtonText}>재개</Text>
+              <TouchableOpacity style={styles.resumeWrapper} onPress={resume} activeOpacity={0.85}>
+                <LinearGradient
+                  colors={[COLORS.sunsetOrange, COLORS.sunsetGold]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.resumeButton}
+                >
+                  <Ionicons name="play" size={22} color="#FFF" />
+                  <Text style={styles.resumeText}>재개</Text>
+                </LinearGradient>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.stopButton} onPress={handleFinish} activeOpacity={0.8}>
-                <Ionicons name="stop" size={28} color={COLORS.danger} />
-                <Text style={styles.stopButtonText}>종료</Text>
+              <TouchableOpacity style={[styles.secondaryBtn, styles.stopBtn]} onPress={handleFinish} activeOpacity={0.8}>
+                <Ionicons name="stop" size={22} color={COLORS.danger} />
+                <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
-      </View>
-    </SafeAreaView>
+
+        {/* 하단 수평선 */}
+        <LinearGradient
+          colors={['transparent', COLORS.sunsetOrange, COLORS.sunsetPink, 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.bottomLine}
+        />
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  root: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  container: {
+  glowOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  safe: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   header: {
-    paddingTop: 16,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  title: {
+  appName: {
     color: COLORS.text,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    letterSpacing: -0.5,
+    letterSpacing: 1,
+  },
+  tagline: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: 6,
   },
   gpsWarning: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: COLORS.surfaceElevated,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,209,102,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,209,102,0.3)',
   },
   gpsWarningText: {
-    color: COLORS.warning,
-    fontSize: 12,
-    fontWeight: '500',
+    color: COLORS.pause,
+    fontSize: 11,
   },
-  statusRow: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statusBadgeActive: {
+    backgroundColor: 'rgba(255,123,79,0.1)',
+    borderColor: 'rgba(255,123,79,0.4)',
+  },
+  statusBadgePaused: {
+    backgroundColor: 'rgba(255,209,102,0.1)',
+    borderColor: 'rgba(255,209,102,0.3)',
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.border,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.textMuted,
   },
   statusDotActive: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.sunsetOrange,
+  },
+  statusDotPaused: {
+    backgroundColor: COLORS.pause,
   },
   statusText: {
     color: COLORS.textMuted,
-    fontSize: 13,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    fontSize: 10,
+    letterSpacing: 2,
+    fontWeight: '600',
+  },
+  statusTextActive: {
+    color: COLORS.sunsetOrange,
+  },
+  speedLines: {
+    marginHorizontal: 24,
+    gap: 3,
+    marginBottom: 4,
+  },
+  speedLine: {
+    height: 1,
+    borderRadius: 1,
+    opacity: 0.6,
+  },
+  speedLineSecond: {
+    width: '60%',
+    opacity: 0.3,
   },
   statsContainer: {
     flex: 1,
     justifyContent: 'center',
   },
   controls: {
-    paddingBottom: 32,
+    paddingBottom: 24,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  startWrapper: {
+    position: 'relative',
     alignItems: 'center',
   },
   startButton: {
@@ -196,76 +304,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 48,
+    paddingHorizontal: 52,
     paddingVertical: 20,
     borderRadius: 50,
-    minWidth: 220,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
+    minWidth: 240,
   },
   startButtonText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  startGlow: {
+    position: 'absolute',
+    bottom: -20,
+    width: 200,
+    height: 40,
+    borderRadius: 20,
+    opacity: 0.5,
+  },
   runningControls: {
     flexDirection: 'row',
-    gap: 20,
+    gap: 14,
+    width: '100%',
   },
-  pauseButton: {
+  secondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 32,
+    gap: 8,
     paddingVertical: 16,
-    borderRadius: 24,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.pause,
-    minWidth: 120,
+    borderColor: 'rgba(255,209,102,0.3)',
   },
-  pauseButtonText: {
-    color: COLORS.pause,
+  stopBtn: {
+    borderColor: 'rgba(255,77,109,0.3)',
+  },
+  secondaryBtnText: {
     fontSize: 14,
     fontWeight: '600',
   },
-  stopButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.danger,
-    minWidth: 120,
-  },
-  stopButtonText: {
-    color: COLORS.danger,
-    fontSize: 14,
-    fontWeight: '600',
+  resumeWrapper: {
+    flex: 1,
   },
   resumeButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 32,
+    gap: 8,
     paddingVertical: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    minWidth: 120,
+    borderRadius: 20,
   },
-  resumeButtonText: {
-    color: COLORS.primary,
+  resumeText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  bottomLine: {
+    height: 1,
+    marginHorizontal: 24,
+    marginBottom: 8,
+    opacity: 0.5,
   },
 });

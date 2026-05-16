@@ -4,38 +4,25 @@ import { COLORS } from '../../constants/colors';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
-interface TabIcon {
-  name: IoniconsName;
-  focused: boolean;
-}
-
-function TabIcon({ name, focused }: TabIcon) {
-  return (
-    <Ionicons
-      name={focused ? name : (`${name}-outline` as IoniconsName)}
-      size={24}
-      color={focused ? COLORS.primary : COLORS.textMuted}
-    />
-  );
-}
-
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: COLORS.surface,
+          backgroundColor: '#0A0E24',
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 60,
+          height: 62,
           paddingBottom: 8,
+          paddingTop: 4,
         },
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor: COLORS.sunsetOrange,
         tabBarInactiveTintColor: COLORS.textMuted,
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          fontSize: 10,
+          fontWeight: '600',
+          letterSpacing: 0.5,
         },
       }}
     >
@@ -43,28 +30,52 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: '홈',
-          tabBarIcon: ({ focused }) => <TabIcon name="radio-button-on" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'radio-button-on' : 'radio-button-off'}
+              size={22}
+              color={color}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
           title: '기록',
-          tabBarIcon: ({ focused }) => <TabIcon name="bar-chart" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'bar-chart' : 'bar-chart-outline'}
+              size={22}
+              color={color}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="coach"
         options={{
           title: 'AI 코치',
-          tabBarIcon: ({ focused }) => <TabIcon name="chatbubbles" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+              size={22}
+              color={color}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: '설정',
-          tabBarIcon: ({ focused }) => <TabIcon name="settings" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'settings' : 'settings-outline'}
+              size={22}
+              color={color}
+            />
+          ),
         }}
       />
     </Tabs>
