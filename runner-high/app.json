@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "Runner's High",
+    "slug": "runners-high",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "scheme": "runnershigh",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.runnershigh.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "달리기 경로 추적을 위해 위치 정보가 필요합니다.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "백그라운드에서도 달리기 경로를 정확하게 추적합니다.",
+        "NSLocationAlwaysUsageDescription": "백그라운드 달리기 추적을 위해 항상 위치 접근이 필요합니다.",
+        "UIBackgroundModes": ["location", "fetch"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0A"
+      },
+      "package": "com.runnershigh.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "달리기 경로 추적을 위해 위치 정보가 필요합니다.",
+          "locationAlwaysPermission": "백그라ундড달리기 추적을 위해 항상 위치 접근이 필요합니다.",
+          "locationWhenInUsePermission": "달리기 중 GPS 추적을 위해 위치 정보가 필요합니다.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
