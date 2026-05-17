@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
+import { useFocusEffect } from 'expo-router';
 import { useRunTracking } from '../../hooks/useRunTracking';
 import { useRunHistory } from '../../hooks/useRunHistory';
 import { RunStats } from '../../components/RunStats';
@@ -45,6 +46,28 @@ export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<ActivityMode>('running');
   const [summarySession, setSummarySession] = useState<RunSession | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
+  // In-screen stop confirmation (replaces Alert.alert which can be unreliable)
+  const [confirmStopVisible, setConfirmStopVisible] = useState(false);
+
+  // Issue 1 fix: 탭 전환 시 오버레이 정리
+  // Empty deps → navigation 이벤트(포커스 변경)에만 반응, state 변경에는 재실행 안 됨
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        // 다른 탭으로 이동할 때: 확인창·요약 모달 닫기
+        setConfirmStopVisible(false);
+        setSummaryVisible(false);
+        setSummarySession(null);
+      };
+    }, [])
+  );
+
+  // FINISHED 상태에서 요약 모달이 닫혀 있으면 → IDLE로 리셋 (탭 복귀 후 처리)
+  useEffect(() => {
+    if (runState === 'FINISHED' && !summaryVisible) {
+      reset();
+    }
+  }, [runState, summaryVisible, reset]);
 
   const handleStart = useCallback(async () => {
     const success = await start(selectedMode);
@@ -53,34 +76,32 @@ export default function HomeScreen() {
     }
   }, [start, selectedMode]);
 
-  const handleFinish = useCallback(async () => {
-    const doFinish = async () => {
-      const session = finish();
-      if (!session) {
-        Alert.alert('기록 없음', '활동 시간이 너무 짧아 저장되지 않았습니다.');
-        reset();
-        return;
-      }
-      try {
-        await addRun(session);
-        setSummarySession(session);
-        setSummaryVisible(true);
-      } catch {
-        Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
-        reset();
-      }
-    };
+  // Issue 2 fix: Alert 대신 화면 내 확인창 사용
+  const handleStopPress = useCallback(() => {
+    setConfirmStopVisible(true);
+  }, []);
 
-    const modeLabel = MODES.find((m) => m.key === mode)?.label ?? '활동';
-    Alert.alert(
-      `${modeLabel} 종료`,
-      '기록을 저장하고 종료할까요?',
-      [
-        { text: '취소', style: 'cancel' },
-        { text: '종료', style: 'destructive', onPress: doFinish },
-      ]
-    );
-  }, [finish, addRun, reset, mode]);
+  const handleStopCancel = useCallback(() => {
+    setConfirmStopVisible(false);
+  }, []);
+
+  const handleStopConfirm = useCallback(async () => {
+    setConfirmStopVisible(false);
+    const session = finish();
+    if (!session) {
+      // 3초 미만 활동 - 조용히 초기화
+      reset();
+      return;
+    }
+    try {
+      await addRun(session);
+      setSummarySession(session);
+      setSummaryVisible(true);
+    } catch {
+      Alert.alert('저장 실패', '기록 저장에 실패했습니다.');
+      reset();
+    }
+  }, [finish, addRun, reset]);
 
   const handleSummaryClose = useCallback(() => {
     setSummaryVisible(false);
@@ -93,8 +114,10 @@ export default function HomeScreen() {
   const isPaused = runState === 'PAUSED';
   const activeModeInfo = MODES.find((m) => m.key === (isIdle ? selectedMode : mode));
 
-  const statusLabel = isIdle ? 'READY' : isRunning
-    ? (mode === 'running' ? 'RUNNING' : mode === 'walking' ? 'WALKING' : 'CYCLING')
+  const statusLabel = isIdle
+    ? 'READY'
+    : isRunning
+    ? mode === 'running' ? 'RUNNING' : mode === 'walking' ? 'WALKING' : 'CYCLING'
     : 'PAUSED';
 
   return (
@@ -187,7 +210,10 @@ export default function HomeScreen() {
                       key={m.key}
                       onPress={() => setSelectedMode(m.key)}
                       activeOpacity={0.8}
-                      style={[styles.modeBtn, active && { borderColor: m.color, backgroundColor: `${m.color}15` }]}
+                      style={[
+                        styles.modeBtn,
+                        active && { borderColor: m.color, backgroundColor: `${m.color}15` },
+                      ]}
                     >
                       <Ionicons
                         name={m.icon as any}
@@ -218,7 +244,11 @@ export default function HomeScreen() {
                 >
                   <Ionicons name="play" size={28} color="#FFFFFF" />
                   <Text style={styles.startButtonText}>
-                    {selectedMode === 'running' ? '달리기 시작' : selectedMode === 'walking' ? '산책 시작' : '자전거 시작'}
+                    {selectedMode === 'running'
+                      ? '달리기 시작'
+                      : selectedMode === 'walking'
+                      ? '산책 시작'
+                      : '자전거 시작'}
                   </Text>
                 </LinearGradient>
                 <LinearGradient
@@ -237,7 +267,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinish}
+                onPress={handleStopPress}
                 activeOpacity={0.8}
               >
                 <Ionicons name="stop" size={22} color={COLORS.danger} />
@@ -261,7 +291,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinish}
+                onPress={handleStopPress}
                 activeOpacity={0.8}
               >
                 <Ionicons name="stop" size={22} color={COLORS.danger} />
@@ -278,6 +308,66 @@ export default function HomeScreen() {
           style={styles.bottomLine}
         />
       </SafeAreaView>
+
+      {/* 종료 확인 오버레이 (Alert 대체 - 더 신뢰성 높음) */}
+      {confirmStopVisible && (
+        <View style={styles.confirmOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={handleStopCancel}
+            activeOpacity={1}
+          />
+          <View style={styles.confirmBox}>
+            <LinearGradient
+              colors={['#1A2548', '#0F1530']}
+              style={styles.confirmBoxInner}
+            >
+              {/* 상단 강조선 */}
+              <LinearGradient
+                colors={[COLORS.danger, COLORS.sunsetPink]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.confirmAccent}
+              />
+
+              <View style={styles.confirmIconWrap}>
+                <Ionicons name="stop-circle-outline" size={40} color={COLORS.danger} />
+              </View>
+
+              <Text style={styles.confirmTitle}>활동 종료</Text>
+              <Text style={styles.confirmDesc}>
+                지금까지의 기록을 저장하고{'\n'}활동을 종료할까요?
+              </Text>
+
+              <View style={styles.confirmButtons}>
+                <TouchableOpacity
+                  style={styles.confirmCancelBtn}
+                  onPress={handleStopCancel}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.confirmCancelText}>계속하기</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.confirmOkBtn}
+                  onPress={handleStopConfirm}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={[COLORS.danger, '#C0392B']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.confirmOkGradient}
+                  >
+                    <Ionicons name="stop" size={16} color="#FFF" />
+                    <Text style={styles.confirmOkText}>저장 후 종료</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+      )}
 
       {/* 활동 완료 요약 모달 */}
       <ActivitySummaryModal
@@ -498,5 +588,90 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     marginBottom: 8,
     opacity: 0.5,
+  },
+  // 종료 확인 오버레이
+  confirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    zIndex: 100,
+  },
+  confirmBox: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,109,0.3)',
+  },
+  confirmBoxInner: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    paddingTop: 0,
+    gap: 12,
+  },
+  confirmAccent: {
+    height: 3,
+    width: '100%',
+    marginBottom: 8,
+  },
+  confirmIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,77,109,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,109,0.25)',
+  },
+  confirmTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  confirmDesc: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 4,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  confirmCancelText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  confirmOkBtn: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  confirmOkGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+  },
+  confirmOkText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
