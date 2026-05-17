@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -45,6 +45,7 @@ export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<ActivityMode>('running');
   const [summarySession, setSummarySession] = useState<RunSession | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
 
   const handleStart = useCallback(async () => {
     const success = await start(selectedMode);
@@ -53,34 +54,31 @@ export default function HomeScreen() {
     }
   }, [start, selectedMode]);
 
-  const handleFinish = useCallback(async () => {
-    const doFinish = async () => {
-      const session = finish();
-      if (!session) {
-        Alert.alert('기록 없음', '활동 시간이 너무 짧아 저장되지 않았습니다.');
-        reset();
-        return;
-      }
-      try {
-        await addRun(session);
-        setSummarySession(session);
-        setSummaryVisible(true);
-      } catch {
-        Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
-        reset();
-      }
-    };
+  const performFinish = useCallback(async () => {
+    setConfirmStop(false);
+    const session = finish();
+    if (!session) {
+      Alert.alert('기록 없음', '활동 시간이 너무 짧아 저장되지 않았습니다.');
+      reset();
+      return;
+    }
+    try {
+      await addRun(session);
+      setSummarySession(session);
+      setSummaryVisible(true);
+    } catch {
+      Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
+      reset();
+    }
+  }, [finish, addRun, reset]);
 
-    const modeLabel = MODES.find((m) => m.key === mode)?.label ?? '활동';
-    Alert.alert(
-      `${modeLabel} 종료`,
-      '기록을 저장하고 종료할까요?',
-      [
-        { text: '취소', style: 'cancel' },
-        { text: '종료', style: 'destructive', onPress: doFinish },
-      ]
-    );
-  }, [finish, addRun, reset, mode]);
+  const handleStopPress = useCallback(() => {
+    setConfirmStop(true);
+  }, []);
+
+  useEffect(() => {
+    if (runState === 'IDLE') setConfirmStop(false);
+  }, [runState]);
 
   const handleSummaryClose = useCallback(() => {
     setSummaryVisible(false);
@@ -102,6 +100,7 @@ export default function HomeScreen() {
       <LinearGradient
         colors={['#080C1E', '#0D1240', '#1A1F6E']}
         style={StyleSheet.absoluteFill}
+        pointerEvents="none"
       />
 
       {isRunning && (
@@ -110,6 +109,7 @@ export default function HomeScreen() {
           style={styles.glowOverlay}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 1 }}
+          pointerEvents="none"
         />
       )}
 
@@ -231,42 +231,88 @@ export default function HomeScreen() {
 
           {isRunning && (
             <View style={styles.runningControls}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={pause} activeOpacity={0.8}>
-                <Ionicons name="pause" size={22} color={COLORS.pause} />
-                <Text style={[styles.secondaryBtnText, { color: COLORS.pause }]}>일시정지</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinish}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="stop" size={22} color={COLORS.danger} />
-                <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
-              </TouchableOpacity>
+              {confirmStop ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.secondaryBtn}
+                    onPress={() => setConfirmStop(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="close-outline" size={22} color={COLORS.textMuted} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.textMuted }]}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, styles.stopBtn]}
+                    onPress={performFinish}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="checkmark-outline" size={22} color={COLORS.danger} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료 확인</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.secondaryBtn} onPress={pause} activeOpacity={0.8}>
+                    <Ionicons name="pause" size={22} color={COLORS.pause} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.pause }]}>일시정지</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, styles.stopBtn]}
+                    onPress={handleStopPress}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="stop" size={22} color={COLORS.danger} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           )}
 
           {isPaused && (
             <View style={styles.runningControls}>
-              <TouchableOpacity style={styles.resumeWrapper} onPress={resume} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={[COLORS.sunsetOrange, COLORS.sunsetGold]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.resumeButton}
-                >
-                  <Ionicons name="play" size={22} color="#FFF" />
-                  <Text style={styles.resumeText}>재개</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinish}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="stop" size={22} color={COLORS.danger} />
-                <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
-              </TouchableOpacity>
+              {confirmStop ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.secondaryBtn}
+                    onPress={() => setConfirmStop(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="close-outline" size={22} color={COLORS.textMuted} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.textMuted }]}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, styles.stopBtn]}
+                    onPress={performFinish}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="checkmark-outline" size={22} color={COLORS.danger} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료 확인</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.resumeWrapper} onPress={resume} activeOpacity={0.85}>
+                    <LinearGradient
+                      colors={[COLORS.sunsetOrange, COLORS.sunsetGold]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.resumeButton}
+                    >
+                      <Ionicons name="play" size={22} color="#FFF" />
+                      <Text style={styles.resumeText}>재개</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, styles.stopBtn]}
+                    onPress={handleStopPress}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="stop" size={22} color={COLORS.danger} />
+                    <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           )}
         </View>
