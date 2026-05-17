@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -13,57 +13,97 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { useRunTracking } from '../../hooks/useRunTracking';
 import { useRunHistory } from '../../hooks/useRunHistory';
 import { RunStats } from '../../components/RunStats';
+import { ActivitySummaryModal } from '../../components/ActivitySummaryModal';
+import { ActivityMode, RunSession } from '../../types';
 import { COLORS } from '../../constants/colors';
 
-export default function HomeScreen() {
-  const { runState, duration, distance, pace, averageSpeed, gpsWeak, start, pause, resume, finish, reset } =
-    useRunTracking();
-  const { addRun } = useRunHistory();
+const MODES: { key: ActivityMode; icon: string; label: string; color: string }[] = [
+  { key: 'running', icon: 'body-outline', label: '달리기', color: COLORS.sunsetOrange },
+  { key: 'walking', icon: 'walk-outline', label: '산책', color: COLORS.success },
+  { key: 'cycling', icon: 'bicycle-outline', label: '자전거', color: '#60A5FA' },
+];
 
+export default function HomeScreen() {
+  const {
+    runState,
+    duration,
+    distance,
+    pace,
+    averageSpeed,
+    currentSpeed,
+    gpsWeak,
+    mode,
+    start,
+    pause,
+    resume,
+    finish,
+    reset,
+  } = useRunTracking();
+  const { addRun } = useRunHistory();
   useKeepAwake();
 
+  const [selectedMode, setSelectedMode] = useState<ActivityMode>('running');
+  const [summarySession, setSummarySession] = useState<RunSession | null>(null);
+  const [summaryVisible, setSummaryVisible] = useState(false);
+
   const handleStart = useCallback(async () => {
-    const success = await start();
+    const success = await start(selectedMode);
     if (!success) {
-      Alert.alert(
-        'GPS 권한 필요',
-        '달리기 추적을 위해 위치 권한이 필요합니다.',
-        [{ text: '확인' }]
-      );
+      Alert.alert('GPS 권한 필요', '활동 추적을 위해 위치 권한이 필요합니다.', [{ text: '확인' }]);
     }
-  }, [start]);
+  }, [start, selectedMode]);
 
   const handleFinish = useCallback(async () => {
-    Alert.alert('달리기 종료', '기록을 저장하고 종료할까요?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '종료',
-        style: 'destructive',
-        onPress: async () => {
-          const session = finish();
-          if (session) {
-            await addRun(session);
-            Alert.alert('저장 완료', `${(session.distance / 1000).toFixed(2)}km 기록이 저장되었습니다!`);
-          }
-          reset();
-        },
-      },
-    ]);
-  }, [finish, addRun, reset]);
+    const doFinish = async () => {
+      const session = finish();
+      if (!session) {
+        Alert.alert('기록 없음', '활동 시간이 너무 짧아 저장되지 않았습니다.');
+        reset();
+        return;
+      }
+      try {
+        await addRun(session);
+        setSummarySession(session);
+        setSummaryVisible(true);
+      } catch {
+        Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
+        reset();
+      }
+    };
+
+    const modeLabel = MODES.find((m) => m.key === mode)?.label ?? '활동';
+    Alert.alert(
+      `${modeLabel} 종료`,
+      '기록을 저장하고 종료할까요?',
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '종료', style: 'destructive', onPress: doFinish },
+      ]
+    );
+  }, [finish, addRun, reset, mode]);
+
+  const handleSummaryClose = useCallback(() => {
+    setSummaryVisible(false);
+    setSummarySession(null);
+    reset();
+  }, [reset]);
 
   const isIdle = runState === 'IDLE' || runState === 'FINISHED';
   const isRunning = runState === 'RUNNING';
   const isPaused = runState === 'PAUSED';
+  const activeModeInfo = MODES.find((m) => m.key === (isIdle ? selectedMode : mode));
+
+  const statusLabel = isIdle ? 'READY' : isRunning
+    ? (mode === 'running' ? 'RUNNING' : mode === 'walking' ? 'WALKING' : 'CYCLING')
+    : 'PAUSED';
 
   return (
     <View style={styles.root}>
-      {/* 배경 그라디언트: 딥 네이비 → 선셋 */}
       <LinearGradient
         colors={['#080C1E', '#0D1240', '#1A1F6E']}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* 달리는 중일 때 선셋 글로우 */}
       {isRunning && (
         <LinearGradient
           colors={['transparent', 'rgba(255,123,79,0.08)', 'rgba(255,107,157,0.05)']}
@@ -78,7 +118,7 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.appName}>runner's high</Text>
-            <Text style={styles.tagline}>즐거운 러닝, 즐거운 삶</Text>
+            <Text style={styles.tagline}>즐거운 활동, 즐거운 삶</Text>
           </View>
           <View style={styles.headerRight}>
             {gpsWeak && isRunning && (
@@ -87,11 +127,18 @@ export default function HomeScreen() {
                 <Text style={styles.gpsWarningText}>GPS 약함</Text>
               </View>
             )}
-            {/* 상태 인디케이터 */}
-            <View style={[styles.statusBadge, isRunning && styles.statusBadgeActive, isPaused && styles.statusBadgePaused]}>
-              <View style={[styles.statusDot, isRunning && styles.statusDotActive, isPaused && styles.statusDotPaused]} />
+            <View style={[
+              styles.statusBadge,
+              isRunning && styles.statusBadgeActive,
+              isPaused && styles.statusBadgePaused,
+            ]}>
+              <View style={[
+                styles.statusDot,
+                isRunning && styles.statusDotActive,
+                isPaused && styles.statusDotPaused,
+              ]} />
               <Text style={[styles.statusText, isRunning && styles.statusTextActive]}>
-                {isIdle ? 'READY' : isRunning ? 'RUNNING' : 'PAUSED'}
+                {statusLabel}
               </Text>
             </View>
           </View>
@@ -100,8 +147,18 @@ export default function HomeScreen() {
         {/* 속도선 장식 */}
         {(isRunning || isPaused) && (
           <View style={styles.speedLines}>
-            <LinearGradient colors={['transparent', COLORS.sunsetOrange, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.speedLine} />
-            <LinearGradient colors={['transparent', COLORS.sunsetPink, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.speedLine, styles.speedLineSecond]} />
+            <LinearGradient
+              colors={['transparent', activeModeInfo?.color ?? COLORS.sunsetOrange, 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.speedLine}
+            />
+            <LinearGradient
+              colors={['transparent', COLORS.sunsetPink, 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.speedLine, styles.speedLineSecond]}
+            />
           </View>
         )}
 
@@ -112,28 +169,64 @@ export default function HomeScreen() {
             distance={distance}
             pace={pace}
             averageSpeed={averageSpeed}
+            currentSpeed={currentSpeed}
+            mode={isIdle ? selectedMode : mode}
           />
         </View>
 
         {/* 컨트롤 */}
         <View style={styles.controls}>
           {isIdle && (
-            <TouchableOpacity onPress={handleStart} activeOpacity={0.85} style={styles.startWrapper}>
-              <LinearGradient
-                colors={[COLORS.sunsetOrange, COLORS.sunsetPink]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.startButton}
-              >
-                <Ionicons name="play" size={28} color="#FFFFFF" />
-                <Text style={styles.startButtonText}>달리기 시작</Text>
-              </LinearGradient>
-              {/* 글로우 효과 */}
-              <LinearGradient
-                colors={['rgba(255,123,79,0.4)', 'transparent']}
-                style={styles.startGlow}
-              />
-            </TouchableOpacity>
+            <>
+              {/* 모드 선택기 */}
+              <View style={styles.modeSelector}>
+                {MODES.map((m) => {
+                  const active = selectedMode === m.key;
+                  return (
+                    <TouchableOpacity
+                      key={m.key}
+                      onPress={() => setSelectedMode(m.key)}
+                      activeOpacity={0.8}
+                      style={[styles.modeBtn, active && { borderColor: m.color, backgroundColor: `${m.color}15` }]}
+                    >
+                      <Ionicons
+                        name={m.icon as any}
+                        size={20}
+                        color={active ? m.color : COLORS.textMuted}
+                      />
+                      <Text style={[styles.modeBtnText, active && { color: m.color }]}>
+                        {m.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* 시작 버튼 */}
+              <TouchableOpacity onPress={handleStart} activeOpacity={0.85} style={styles.startWrapper}>
+                <LinearGradient
+                  colors={
+                    selectedMode === 'running'
+                      ? [COLORS.sunsetOrange, COLORS.sunsetPink]
+                      : selectedMode === 'walking'
+                      ? ['#06D6A0', '#0EA5E9']
+                      : ['#3B82F6', '#8B5CF6']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.startButton}
+                >
+                  <Ionicons name="play" size={28} color="#FFFFFF" />
+                  <Text style={styles.startButtonText}>
+                    {selectedMode === 'running' ? '달리기 시작' : selectedMode === 'walking' ? '산책 시작' : '자전거 시작'}
+                  </Text>
+                </LinearGradient>
+                <LinearGradient
+                  colors={[`${activeModeInfo?.color ?? COLORS.sunsetOrange}60`, 'transparent']}
+                  style={styles.startGlow}
+                />
+              </TouchableOpacity>
+            </>
           )}
 
           {isRunning && (
@@ -142,7 +235,11 @@ export default function HomeScreen() {
                 <Ionicons name="pause" size={22} color={COLORS.pause} />
                 <Text style={[styles.secondaryBtnText, { color: COLORS.pause }]}>일시정지</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.secondaryBtn, styles.stopBtn]} onPress={handleFinish} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={[styles.secondaryBtn, styles.stopBtn]}
+                onPress={handleFinish}
+                activeOpacity={0.8}
+              >
                 <Ionicons name="stop" size={22} color={COLORS.danger} />
                 <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
               </TouchableOpacity>
@@ -162,7 +259,11 @@ export default function HomeScreen() {
                   <Text style={styles.resumeText}>재개</Text>
                 </LinearGradient>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.secondaryBtn, styles.stopBtn]} onPress={handleFinish} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={[styles.secondaryBtn, styles.stopBtn]}
+                onPress={handleFinish}
+                activeOpacity={0.8}
+              >
                 <Ionicons name="stop" size={22} color={COLORS.danger} />
                 <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
               </TouchableOpacity>
@@ -170,14 +271,20 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* 하단 수평선 */}
         <LinearGradient
-          colors={['transparent', COLORS.sunsetOrange, COLORS.sunsetPink, 'transparent']}
+          colors={['transparent', activeModeInfo?.color ?? COLORS.sunsetOrange, COLORS.sunsetPink, 'transparent']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.bottomLine}
         />
       </SafeAreaView>
+
+      {/* 활동 완료 요약 모달 */}
+      <ActivitySummaryModal
+        session={summarySession}
+        visible={summaryVisible}
+        onClose={handleSummaryClose}
+      />
     </View>
   );
 }
@@ -294,10 +401,33 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     alignItems: 'center',
     paddingHorizontal: 24,
+    gap: 14,
+  },
+  modeSelector: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  modeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modeBtnText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
   },
   startWrapper: {
     position: 'relative',
     alignItems: 'center',
+    width: '100%',
   },
   startButton: {
     flexDirection: 'row',
@@ -307,7 +437,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 52,
     paddingVertical: 20,
     borderRadius: 50,
-    minWidth: 240,
+    width: '100%',
   },
   startButtonText: {
     color: '#FFFFFF',

@@ -1,7 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { formatDuration, formatDistance, formatPace } from '../utils/formatters';
+import { Ionicons } from '@expo/vector-icons';
+import { formatDuration, formatDistance, formatPace, formatSteps } from '../utils/formatters';
+import { estimateSteps, getCyclingZone, getCyclingZoneLabel } from '../utils/calculations';
+import { ActivityMode } from '../types';
 import { COLORS } from '../constants/colors';
 
 interface Props {
@@ -9,9 +12,14 @@ interface Props {
   distance: number;
   pace: number;
   averageSpeed: number;
+  currentSpeed: number;
+  mode: ActivityMode;
 }
 
-export function RunStats({ duration, distance, pace, averageSpeed }: Props) {
+export function RunStats({ duration, distance, pace, averageSpeed, currentSpeed, mode }: Props) {
+  const steps = mode !== 'cycling' ? estimateSteps(distance, mode === 'walking' ? 'walking' : 'running') : 0;
+  const currentZone = mode === 'cycling' ? getCyclingZone(currentSpeed) : null;
+
   return (
     <View style={styles.container}>
       {/* 메인 거리 표시 */}
@@ -21,7 +29,6 @@ export function RunStats({ duration, distance, pace, averageSpeed }: Props) {
           <Text style={styles.distanceValue}>{formatDistance(distance)}</Text>
           <Text style={styles.distanceUnit}>km</Text>
         </View>
-        {/* 선셋 언더라인 */}
         <LinearGradient
           colors={COLORS.gradientSunset}
           start={{ x: 0, y: 0 }}
@@ -35,28 +42,86 @@ export function RunStats({ duration, distance, pace, averageSpeed }: Props) {
         <Text style={styles.timer}>{formatDuration(duration)}</Text>
       </View>
 
-      {/* 보조 통계 */}
-      <View style={styles.secondaryRow}>
-        <LinearGradient
-          colors={['rgba(26,37,72,0.8)', 'rgba(15,21,48,0.8)']}
-          style={styles.statCard}
-        >
-          <Text style={styles.statLabel}>페이스</Text>
-          <Text style={styles.statValue}>{formatPace(pace)}</Text>
-          <Text style={styles.statUnit}>분:초/km</Text>
-        </LinearGradient>
+      {/* 모드별 보조 통계 */}
+      {mode === 'running' && (
+        <View style={styles.secondaryRow}>
+          <StatCard label="페이스" value={formatPace(pace)} unit="분:초/km" />
+          <StatCard label="평균 속도" value={averageSpeed.toFixed(1)} unit="km/h" />
+        </View>
+      )}
 
-        <LinearGradient
-          colors={['rgba(26,37,72,0.8)', 'rgba(15,21,48,0.8)']}
-          style={styles.statCard}
-        >
-          <Text style={styles.statLabel}>평균 속도</Text>
-          <Text style={styles.statValue}>{averageSpeed.toFixed(1)}</Text>
-          <Text style={styles.statUnit}>km/h</Text>
-        </LinearGradient>
-      </View>
+      {mode === 'walking' && (
+        <View style={styles.secondaryRow}>
+          <StatCard
+            label="추정 걸음수"
+            value={formatSteps(steps)}
+            unit="걸음"
+            icon="footsteps-outline"
+          />
+          <StatCard
+            label="속도"
+            value={averageSpeed.toFixed(1)}
+            unit="km/h"
+          />
+        </View>
+      )}
+
+      {mode === 'cycling' && (
+        <>
+          <View style={styles.secondaryRow}>
+            <StatCard label="현재 속도" value={currentSpeed.toFixed(1)} unit="km/h" />
+            <StatCard label="평균 속도" value={averageSpeed.toFixed(1)} unit="km/h" />
+          </View>
+          {currentZone && (
+            <View style={styles.zoneIndicator}>
+              <ZoneDot zone={currentZone} />
+              <Text style={[styles.zoneText, { color: zoneColor(currentZone) }]}>
+                {getCyclingZoneLabel(currentZone)}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
     </View>
   );
+}
+
+function StatCard({
+  label,
+  value,
+  unit,
+  icon,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
+}) {
+  return (
+    <LinearGradient
+      colors={['rgba(26,37,72,0.8)', 'rgba(15,21,48,0.8)']}
+      style={styles.statCard}
+    >
+      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statValueRow}>
+        {icon && <Ionicons name={icon} size={14} color={COLORS.sunsetOrange} />}
+        <Text style={styles.statValue}>{value}</Text>
+      </View>
+      <Text style={styles.statUnit}>{unit}</Text>
+    </LinearGradient>
+  );
+}
+
+function ZoneDot({ zone }: { zone: 1 | 2 | 3 }) {
+  return (
+    <View style={[styles.zoneDot, { backgroundColor: zoneColor(zone) }]} />
+  );
+}
+
+function zoneColor(zone: 1 | 2 | 3): string {
+  if (zone === 1) return '#60A5FA';
+  if (zone === 2) return '#34D399';
+  return COLORS.sunsetOrange;
 }
 
 const styles = StyleSheet.create({
@@ -135,15 +200,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1,
   },
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
   statValue: {
     color: COLORS.sunsetOrange,
     fontSize: 26,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
-    marginTop: 4,
   },
   statUnit: {
     color: COLORS.textMuted,
     fontSize: 10,
+  },
+  zoneIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  zoneDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  zoneText: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });

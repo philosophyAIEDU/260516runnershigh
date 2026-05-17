@@ -25,7 +25,7 @@ export default function HistoryScreen() {
       <SafeAreaView style={styles.safe}>
         {/* 헤더 */}
         <View style={styles.header}>
-          <Text style={styles.title}>달리기 기록</Text>
+          <Text style={styles.title}>활동 기록</Text>
           <LinearGradient
             colors={[COLORS.sunsetOrange, COLORS.sunsetPink]}
             start={{ x: 0, y: 0 }}
@@ -45,7 +45,7 @@ export default function HistoryScreen() {
             >
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryValue}>{formatDistance(totalDistance)}</Text>
-                <Text style={styles.summaryLabel}>총 거리 km</Text>
+                <Text style={styles.summaryLabel}>총 거리(km)</Text>
               </View>
               <LinearGradient
                 colors={['transparent', COLORS.border, 'transparent']}

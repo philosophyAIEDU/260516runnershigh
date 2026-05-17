@@ -44,3 +44,16 @@ export function maskApiKey(key: string): string {
   if (!key || key.length <= 4) return '****';
   return key.slice(0, 4) + '*'.repeat(Math.min(key.length - 4, 20));
 }
+
+// 걸음수 포맷 (1000 이상이면 K 표기)
+export function formatSteps(steps: number): string {
+  if (steps >= 1000) return `${(steps / 1000).toFixed(1)}K`;
+  return String(steps);
+}
+
+// 초 → 분 표기 (예: 1:23)
+export function formatMinutes(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
