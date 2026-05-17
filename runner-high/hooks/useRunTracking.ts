@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import * as Location from 'expo-location';
-import { RunState, Coordinate, RunSession } from '../types';
+import { RunState, Coordinate, RunSession, ActivityMode, CyclingZones } from '../types';
 import { requestLocationPermission, toCoordinate, isAccurateEnough } from '../services/locationService';
-import { haversineDistance, calculatePace, calculateAverageSpeed } from '../utils/calculations';
+import { haversineDistance, calculatePace, calculateAverageSpeed, getCyclingZone, estimateSteps } from '../utils/calculations';
 import { saveDraftRun, clearDraftRun } from '../services/storageService';
 
 function generateId(): string {
@@ -11,16 +11,19 @@ function generateId(): string {
 
 export function useRunTracking() {
   const [runState, setRunState] = useState<RunState>('IDLE');
-  const [duration, setDuration] = useState(0);       // seconds
-  const [distance, setDistance] = useState(0);       // meters
-  const [pace, setPace] = useState(0);               // seconds/km
+  const [duration, setDuration] = useState(0);
+  const [distance, setDistance] = useState(0);
+  const [pace, setPace] = useState(0);
   const [averageSpeed, setAverageSpeed] = useState(0);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
   const [gpsWeak, setGpsWeak] = useState(false);
   const [coordinates, setCoordinates] = useState<Coordinate[]>([]);
+  const [mode, setMode] = useState<ActivityMode>('running');
 
   const startTimeRef = useRef<number>(0);
-  const pausedDurationRef = useRef<number>(0);       // 누적 일시정지 시간(s)
+  const pausedDurationRef = useRef<number>(0);
   const pauseStartRef = useRef<number>(0);
+  const isPausedRef = useRef<boolean>(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const lastCoordRef = useRef<Coordinate | null>(null);
@@ -28,12 +31,13 @@ export function useRunTracking() {
   const coordsRef = useRef<Coordinate[]>([]);
   const draftTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionIdRef = useRef<string>('');
+  const modeRef = useRef<ActivityMode>('running');
+  const cyclingZonesRef = useRef<CyclingZones>({ zone1: 0, zone2: 0, zone3: 0 });
 
-  // 타이머: 1초마다 duration 업데이트
   const startTimer = useCallback(() => {
     timerRef.current = setInterval(() => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000 - pausedDurationRef.current;
-      setDuration(Math.floor(elapsed));
+      setDuration(Math.floor(Math.max(0, elapsed)));
     }, 1000);
   }, []);
 
@@ -44,7 +48,6 @@ export function useRunTracking() {
     }
   }, []);
 
-  // GPS 구독 시작
   const startLocationTracking = useCallback(async () => {
     locationSubRef.current = await Location.watchPositionAsync(
       {
@@ -61,22 +64,33 @@ export function useRunTracking() {
         }
         setGpsWeak(false);
 
-        // 거리 누적 계산
         if (lastCoordRef.current) {
           const delta = haversineDistance(lastCoordRef.current, coord);
-          // 비현실적 이동(100m/s 이상)은 무시
           const timeDelta = (coord.timestamp - lastCoordRef.current.timestamp) / 1000;
           if (timeDelta > 0 && delta / timeDelta < 100) {
             distanceRef.current += delta;
             setDistance(distanceRef.current);
+
+            // speed from haversine if device speed unavailable
+            if (coord.speed == null) {
+              coord.speed = (delta / timeDelta) * 3.6;
+            }
+
+            // cycling zone tracking
+            if (modeRef.current === 'cycling' && coord.speed != null) {
+              const zone = getCyclingZone(coord.speed);
+              if (zone === 1) cyclingZonesRef.current.zone1 += timeDelta;
+              else if (zone === 2) cyclingZonesRef.current.zone2 += timeDelta;
+              else cyclingZonesRef.current.zone3 += timeDelta;
+            }
           }
         }
 
+        setCurrentSpeed(coord.speed ?? 0);
         lastCoordRef.current = coord;
         coordsRef.current = [...coordsRef.current, coord];
         setCoordinates((prev) => [...prev, coord]);
 
-        // 페이스 / 속도 업데이트
         const elapsed = (Date.now() - startTimeRef.current) / 1000 - pausedDurationRef.current;
         if (elapsed > 0) {
           setPace(calculatePace(distanceRef.current, elapsed));
@@ -91,7 +105,6 @@ export function useRunTracking() {
     locationSubRef.current = null;
   }, []);
 
-  // 1분마다 중간 저장
   const startDraftSave = useCallback(() => {
     draftTimerRef.current = setInterval(async () => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000 - pausedDurationRef.current;
@@ -112,21 +125,27 @@ export function useRunTracking() {
     }
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (activityMode: ActivityMode = 'running') => {
     const permitted = await requestLocationPermission();
     if (!permitted) return false;
 
     sessionIdRef.current = generateId();
     startTimeRef.current = Date.now();
     pausedDurationRef.current = 0;
+    pauseStartRef.current = 0;
+    isPausedRef.current = false;
     distanceRef.current = 0;
     coordsRef.current = [];
     lastCoordRef.current = null;
+    modeRef.current = activityMode;
+    cyclingZonesRef.current = { zone1: 0, zone2: 0, zone3: 0 };
 
+    setMode(activityMode);
     setDuration(0);
     setDistance(0);
     setPace(0);
     setAverageSpeed(0);
+    setCurrentSpeed(0);
     setCoordinates([]);
     setGpsWeak(false);
 
@@ -138,6 +157,7 @@ export function useRunTracking() {
   }, [startTimer, startLocationTracking, startDraftSave]);
 
   const pause = useCallback(() => {
+    isPausedRef.current = true;
     pauseStartRef.current = Date.now();
     setRunState('PAUSED');
     stopTimer();
@@ -145,6 +165,7 @@ export function useRunTracking() {
   }, [stopTimer, stopLocationTracking]);
 
   const resume = useCallback(async () => {
+    isPausedRef.current = false;
     pausedDurationRef.current += (Date.now() - pauseStartRef.current) / 1000;
     setRunState('RUNNING');
     startTimer();
@@ -158,12 +179,21 @@ export function useRunTracking() {
     clearDraftRun();
 
     const endTime = Date.now();
-    const elapsed = (endTime - startTimeRef.current) / 1000 - pausedDurationRef.current;
-    if (elapsed < 1) {
+    // If finishing while paused, include current pause duration in total
+    const currentPauseDuration = isPausedRef.current && pauseStartRef.current > 0
+      ? (endTime - pauseStartRef.current) / 1000
+      : 0;
+    const totalPaused = pausedDurationRef.current + currentPauseDuration;
+    const elapsed = (endTime - startTimeRef.current) / 1000 - totalPaused;
+
+    isPausedRef.current = false;
+
+    if (elapsed < 3) {
       setRunState('IDLE');
       return null;
     }
 
+    const currentMode = modeRef.current;
     const session: RunSession = {
       id: sessionIdRef.current,
       startTime: startTimeRef.current,
@@ -173,6 +203,13 @@ export function useRunTracking() {
       pace: calculatePace(distanceRef.current, Math.floor(elapsed)),
       averageSpeed: calculateAverageSpeed(distanceRef.current, Math.floor(elapsed)),
       coordinates: coordsRef.current,
+      mode: currentMode,
+      steps: currentMode !== 'cycling'
+        ? estimateSteps(distanceRef.current, currentMode === 'walking' ? 'walking' : 'running')
+        : undefined,
+      cyclingZones: currentMode === 'cycling'
+        ? { ...cyclingZonesRef.current }
+        : undefined,
     };
 
     setRunState('FINISHED');
@@ -185,11 +222,11 @@ export function useRunTracking() {
     setDistance(0);
     setPace(0);
     setAverageSpeed(0);
+    setCurrentSpeed(0);
     setCoordinates([]);
     setGpsWeak(false);
   }, []);
 
-  // 언마운트 시 정리
   useEffect(() => {
     return () => {
       stopTimer();
@@ -204,8 +241,10 @@ export function useRunTracking() {
     distance,
     pace,
     averageSpeed,
+    currentSpeed,
     gpsWeak,
     coordinates,
+    mode,
     start,
     pause,
     resume,

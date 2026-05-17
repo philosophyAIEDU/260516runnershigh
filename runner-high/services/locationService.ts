@@ -17,6 +17,10 @@ export function toCoordinate(loc: Location.LocationObject): Coordinate {
     longitude: loc.coords.longitude,
     timestamp: loc.timestamp,
     accuracy: loc.coords.accuracy ?? undefined,
+    // loc.coords.speed is m/s, convert to km/h; null means unavailable
+    speed: loc.coords.speed != null && loc.coords.speed >= 0
+      ? loc.coords.speed * 3.6
+      : undefined,
   };
 }
 

@@ -13,7 +13,9 @@ export async function loadRuns(): Promise<RunSession[]> {
   const raw = await AsyncStorage.getItem(RUNS_KEY);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as RunSession[];
+    const runs = JSON.parse(raw) as RunSession[];
+    // Backfill mode for sessions saved before multi-mode support
+    return runs.map((r) => r.mode ? r : { ...r, mode: 'running' as const });
   } catch {
     return [];
   }
