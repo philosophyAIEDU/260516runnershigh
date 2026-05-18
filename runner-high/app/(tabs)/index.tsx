@@ -6,6 +6,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,7 @@ export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<ActivityMode>('running');
   const [summarySession, setSummarySession] = useState<RunSession | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   const handleStart = useCallback(async () => {
     const success = await start(selectedMode);
@@ -53,34 +55,30 @@ export default function HomeScreen() {
     }
   }, [start, selectedMode]);
 
-  const handleFinish = useCallback(async () => {
-    const doFinish = async () => {
-      const session = finish();
-      if (!session) {
-        Alert.alert('기록 없음', '활동 시간이 너무 짧아 저장되지 않았습니다.');
-        reset();
-        return;
-      }
-      try {
-        await addRun(session);
-        setSummarySession(session);
-        setSummaryVisible(true);
-      } catch {
-        Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
-        reset();
-      }
-    };
+  const handleFinishPress = useCallback(() => {
+    setConfirmVisible(true);
+  }, []);
 
-    const modeLabel = MODES.find((m) => m.key === mode)?.label ?? '활동';
-    Alert.alert(
-      `${modeLabel} 종료`,
-      '기록을 저장하고 종료할까요?',
-      [
-        { text: '취소', style: 'cancel' },
-        { text: '종료', style: 'destructive', onPress: doFinish },
-      ]
-    );
-  }, [finish, addRun, reset, mode]);
+  const handleConfirmFinish = useCallback(async () => {
+    setConfirmVisible(false);
+    const session = finish();
+    if (!session) {
+      reset();
+      return;
+    }
+    try {
+      await addRun(session);
+      setSummarySession(session);
+      setSummaryVisible(true);
+    } catch {
+      Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
+      reset();
+    }
+  }, [finish, addRun, reset]);
+
+  const handleCancelFinish = useCallback(() => {
+    setConfirmVisible(false);
+  }, []);
 
   const handleSummaryClose = useCallback(() => {
     setSummaryVisible(false);
@@ -237,7 +235,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinish}
+                onPress={handleFinishPress}
                 activeOpacity={0.8}
               >
                 <Ionicons name="stop" size={22} color={COLORS.danger} />
@@ -261,7 +259,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinish}
+                onPress={handleFinishPress}
                 activeOpacity={0.8}
               >
                 <Ionicons name="stop" size={22} color={COLORS.danger} />
@@ -285,6 +283,39 @@ export default function HomeScreen() {
         visible={summaryVisible}
         onClose={handleSummaryClose}
       />
+
+      {/* 종료 확인 모달 */}
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelFinish}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>
+              {MODES.find((m) => m.key === mode)?.label ?? '활동'} 종료
+            </Text>
+            <Text style={styles.confirmMessage}>기록을 저장하고 종료할까요?</Text>
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={handleCancelFinish}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmStopBtn}
+                onPress={handleConfirmFinish}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmStopText}>종료</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -498,5 +529,66 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     marginBottom: 8,
     opacity: 0.5,
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  confirmBox: {
+    width: '100%',
+    backgroundColor: '#0D1240',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,109,0.3)',
+    gap: 16,
+  },
+  confirmTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  confirmMessage: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  confirmStopBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,77,109,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,109,0.5)',
+    alignItems: 'center',
+  },
+  confirmStopText: {
+    color: COLORS.danger,
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
