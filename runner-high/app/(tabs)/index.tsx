@@ -6,7 +6,6 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
-  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,8 +34,6 @@ export default function HomeScreen() {
     gpsWeak,
     mode,
     start,
-    pause,
-    resume,
     finish,
     reset,
   } = useRunTracking();
@@ -46,7 +43,7 @@ export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<ActivityMode>('running');
   const [summarySession, setSummarySession] = useState<RunSession | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
-  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleStart = useCallback(async () => {
     const success = await start(selectedMode);
@@ -55,15 +52,13 @@ export default function HomeScreen() {
     }
   }, [start, selectedMode]);
 
-  const handleFinishPress = useCallback(() => {
-    setConfirmVisible(true);
-  }, []);
-
-  const handleConfirmFinish = useCallback(async () => {
-    setConfirmVisible(false);
+  const handleRecord = useCallback(async () => {
+    if (saving) return;
+    setSaving(true);
     const session = finish();
     if (!session) {
       reset();
+      setSaving(false);
       return;
     }
     try {
@@ -71,14 +66,11 @@ export default function HomeScreen() {
       setSummarySession(session);
       setSummaryVisible(true);
     } catch {
-      Alert.alert('저장 실패', '기록 저장에 실패했습니다. 다시 시도해주세요.');
       reset();
+    } finally {
+      setSaving(false);
     }
-  }, [finish, addRun, reset]);
-
-  const handleCancelFinish = useCallback(() => {
-    setConfirmVisible(false);
-  }, []);
+  }, [finish, addRun, reset, saving]);
 
   const handleSummaryClose = useCallback(() => {
     setSummaryVisible(false);
@@ -87,13 +79,13 @@ export default function HomeScreen() {
   }, [reset]);
 
   const isIdle = runState === 'IDLE' || runState === 'FINISHED';
-  const isRunning = runState === 'RUNNING';
-  const isPaused = runState === 'PAUSED';
+  const isActive = runState === 'RUNNING' || runState === 'PAUSED';
   const activeModeInfo = MODES.find((m) => m.key === (isIdle ? selectedMode : mode));
 
-  const statusLabel = isIdle ? 'READY' : isRunning
-    ? (mode === 'running' ? 'RUNNING' : mode === 'walking' ? 'WALKING' : 'CYCLING')
-    : 'PAUSED';
+  const statusLabel = isIdle ? 'READY'
+    : mode === 'running' ? 'RUNNING'
+    : mode === 'walking' ? 'WALKING'
+    : 'CYCLING';
 
   return (
     <View style={styles.root}>
@@ -102,7 +94,7 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      {isRunning && (
+      {isActive && (
         <LinearGradient
           colors={['transparent', 'rgba(255,123,79,0.08)', 'rgba(255,107,157,0.05)']}
           style={styles.glowOverlay}
@@ -119,7 +111,7 @@ export default function HomeScreen() {
             <Text style={styles.tagline}>즐거운 활동, 즐거운 삶</Text>
           </View>
           <View style={styles.headerRight}>
-            {gpsWeak && isRunning && (
+            {gpsWeak && isActive && (
               <View style={styles.gpsWarning}>
                 <Ionicons name="warning-outline" size={13} color={COLORS.pause} />
                 <Text style={styles.gpsWarningText}>GPS 약함</Text>
@@ -127,15 +119,13 @@ export default function HomeScreen() {
             )}
             <View style={[
               styles.statusBadge,
-              isRunning && styles.statusBadgeActive,
-              isPaused && styles.statusBadgePaused,
+              isActive && styles.statusBadgeActive,
             ]}>
               <View style={[
                 styles.statusDot,
-                isRunning && styles.statusDotActive,
-                isPaused && styles.statusDotPaused,
+                isActive && styles.statusDotActive,
               ]} />
-              <Text style={[styles.statusText, isRunning && styles.statusTextActive]}>
+              <Text style={[styles.statusText, isActive && styles.statusTextActive]}>
                 {statusLabel}
               </Text>
             </View>
@@ -143,7 +133,7 @@ export default function HomeScreen() {
         </View>
 
         {/* 속도선 장식 */}
-        {(isRunning || isPaused) && (
+        {isActive && (
           <View style={styles.speedLines}>
             <LinearGradient
               colors={['transparent', activeModeInfo?.color ?? COLORS.sunsetOrange, 'transparent']}
@@ -227,45 +217,30 @@ export default function HomeScreen() {
             </>
           )}
 
-          {isRunning && (
-            <View style={styles.runningControls}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={pause} activeOpacity={0.8}>
-                <Ionicons name="pause" size={22} color={COLORS.pause} />
-                <Text style={[styles.secondaryBtnText, { color: COLORS.pause }]}>일시정지</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinishPress}
-                activeOpacity={0.8}
+          {/* 기록 버튼 */}
+          {isActive && (
+            <TouchableOpacity
+              onPress={handleRecord}
+              activeOpacity={0.85}
+              style={styles.recordWrapper}
+              disabled={saving}
+            >
+              <LinearGradient
+                colors={[COLORS.sunsetOrange, COLORS.sunsetPink]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.recordButton, saving && styles.recordButtonDisabled]}
               >
-                <Ionicons name="stop" size={22} color={COLORS.danger} />
-                <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {isPaused && (
-            <View style={styles.runningControls}>
-              <TouchableOpacity style={styles.resumeWrapper} onPress={resume} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={[COLORS.sunsetOrange, COLORS.sunsetGold]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.resumeButton}
-                >
-                  <Ionicons name="play" size={22} color="#FFF" />
-                  <Text style={styles.resumeText}>재개</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, styles.stopBtn]}
-                onPress={handleFinishPress}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="stop" size={22} color={COLORS.danger} />
-                <Text style={[styles.secondaryBtnText, { color: COLORS.danger }]}>종료</Text>
-              </TouchableOpacity>
-            </View>
+                <Ionicons name="bookmark" size={26} color="#FFFFFF" />
+                <Text style={styles.recordButtonText}>
+                  {saving ? '저장 중...' : '기록'}
+                </Text>
+              </LinearGradient>
+              <LinearGradient
+                colors={[`${COLORS.sunsetOrange}60`, 'transparent']}
+                style={styles.recordGlow}
+              />
+            </TouchableOpacity>
           )}
         </View>
 
@@ -283,39 +258,6 @@ export default function HomeScreen() {
         visible={summaryVisible}
         onClose={handleSummaryClose}
       />
-
-      {/* 종료 확인 모달 */}
-      <Modal
-        visible={confirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={handleCancelFinish}
-      >
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmBox}>
-            <Text style={styles.confirmTitle}>
-              {MODES.find((m) => m.key === mode)?.label ?? '활동'} 종료
-            </Text>
-            <Text style={styles.confirmMessage}>기록을 저장하고 종료할까요?</Text>
-            <View style={styles.confirmButtons}>
-              <TouchableOpacity
-                style={styles.confirmCancelBtn}
-                onPress={handleCancelFinish}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmCancelText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmStopBtn}
-                onPress={handleConfirmFinish}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmStopText}>종료</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -385,10 +327,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,123,79,0.1)',
     borderColor: 'rgba(255,123,79,0.4)',
   },
-  statusBadgePaused: {
-    backgroundColor: 'rgba(255,209,102,0.1)',
-    borderColor: 'rgba(255,209,102,0.3)',
-  },
   statusDot: {
     width: 6,
     height: 6,
@@ -397,9 +335,6 @@ const styles = StyleSheet.create({
   },
   statusDotActive: {
     backgroundColor: COLORS.sunsetOrange,
-  },
-  statusDotPaused: {
-    backgroundColor: COLORS.pause,
   },
   statusText: {
     color: COLORS.textMuted,
@@ -484,111 +419,42 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     opacity: 0.5,
   },
-  runningControls: {
-    flexDirection: 'row',
-    gap: 14,
+  recordWrapper: {
+    position: 'relative',
+    alignItems: 'center',
     width: '100%',
   },
-  secondaryBtn: {
-    flex: 1,
+  recordButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: 'rgba(255,209,102,0.3)',
+    gap: 12,
+    paddingHorizontal: 52,
+    paddingVertical: 20,
+    borderRadius: 50,
+    width: '100%',
   },
-  stopBtn: {
-    borderColor: 'rgba(255,77,109,0.3)',
+  recordButtonDisabled: {
+    opacity: 0.6,
   },
-  secondaryBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  resumeWrapper: {
-    flex: 1,
-  },
-  resumeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 20,
-  },
-  resumeText: {
+  recordButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  recordGlow: {
+    position: 'absolute',
+    bottom: -20,
+    width: 200,
+    height: 40,
+    borderRadius: 20,
+    opacity: 0.5,
   },
   bottomLine: {
     height: 1,
     marginHorizontal: 24,
     marginBottom: 8,
     opacity: 0.5,
-  },
-  confirmOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  confirmBox: {
-    width: '100%',
-    backgroundColor: '#0D1240',
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,77,109,0.3)',
-    gap: 16,
-  },
-  confirmTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  confirmMessage: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  confirmButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  confirmCancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  confirmCancelText: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  confirmStopBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,77,109,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,77,109,0.5)',
-    alignItems: 'center',
-  },
-  confirmStopText: {
-    color: COLORS.danger,
-    fontSize: 15,
-    fontWeight: '700',
   },
 });
