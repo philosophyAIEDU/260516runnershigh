@@ -24,6 +24,13 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
+function getRankLabel(rank: number): { label: string; color: string; bg: string } | null {
+  if (rank === 1) return { label: 'WR', color: '#FFD700', bg: 'rgba(255,215,0,0.15)' };
+  if (rank === 2) return { label: 'OR', color: '#C0C0C0', bg: 'rgba(192,192,192,0.15)' };
+  if (rank === 3) return { label: '#3', color: '#CD7F32', bg: 'rgba(205,127,50,0.15)' };
+  return { label: `#${rank}`, color: COLORS.textMuted, bg: 'rgba(255,255,255,0.06)' };
+}
+
 const MODE_INFO: Record<ActivityMode, { icon: string; label: string; color: string }> = {
   running: { icon: 'body-outline', label: '달리기', color: COLORS.sunsetOrange },
   walking: { icon: 'walk-outline', label: '산책', color: COLORS.success },
@@ -32,14 +39,17 @@ const MODE_INFO: Record<ActivityMode, { icon: string; label: string; color: stri
 
 function RunItem({
   run,
+  rank,
   onDelete,
   onViewMap,
 }: {
   run: RunSession;
+  rank: number;
   onDelete: (id: string) => void;
   onViewMap: (run: RunSession) => void;
 }) {
   const modeInfo = MODE_INFO[run.mode] ?? MODE_INFO.running;
+  const rankInfo = getRankLabel(rank);
 
   const handleDelete = () => {
     Alert.alert('기록 삭제', '이 활동 기록을 삭제할까요?', [
@@ -51,7 +61,7 @@ function RunItem({
   return (
     <View style={styles.cardWrapper}>
       <LinearGradient colors={['#1A2548', '#0F1530']} style={styles.card}>
-        {/* 상단: 날짜 + 모드 + 삭제 */}
+        {/* 상단: 날짜 + 모드 + 순위 + 삭제 */}
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
             <Ionicons name="calendar-outline" size={12} color={COLORS.textMuted} />
@@ -60,6 +70,11 @@ function RunItem({
               <Ionicons name={modeInfo.icon as any} size={11} color={modeInfo.color} />
               <Text style={[styles.modeText, { color: modeInfo.color }]}>{modeInfo.label}</Text>
             </View>
+            {rankInfo && (
+              <View style={[styles.rankBadge, { backgroundColor: rankInfo.bg, borderColor: `${rankInfo.color}50` }]}>
+                <Text style={[styles.rankText, { color: rankInfo.color }]}>{rankInfo.label}</Text>
+              </View>
+            )}
           </View>
           <TouchableOpacity onPress={handleDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
@@ -246,6 +261,14 @@ function ZoneRow({ label, pct, color, sec }: { label: string; pct: number; color
 export function RunHistory({ runs, onDelete }: Props) {
   const [mapRun, setMapRun] = useState<RunSession | null>(null);
 
+  // 속도 내림차순으로 순위 계산
+  const rankMap = React.useMemo(() => {
+    const sorted = [...runs].sort((a, b) => b.averageSpeed - a.averageSpeed);
+    const map = new Map<string, number>();
+    sorted.forEach((r, i) => map.set(r.id, i + 1));
+    return map;
+  }, [runs]);
+
   if (runs.length === 0) {
     return (
       <View style={styles.empty}>
@@ -266,7 +289,12 @@ export function RunHistory({ runs, onDelete }: Props) {
         data={runs}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <RunItem run={item} onDelete={onDelete} onViewMap={setMapRun} />
+          <RunItem
+            run={item}
+            rank={rankMap.get(item.id) ?? runs.length}
+            onDelete={onDelete}
+            onViewMap={setMapRun}
+          />
         )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
@@ -331,6 +359,17 @@ const styles = StyleSheet.create({
   modeText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  rankBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  rankText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   distanceRow: {
     flexDirection: 'row',

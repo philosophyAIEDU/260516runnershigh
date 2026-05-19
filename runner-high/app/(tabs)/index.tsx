@@ -64,8 +64,10 @@ export default function HomeScreen() {
       await addRun(session);
       setSummarySession(session);
       setSummaryVisible(true);
-    } catch {
+    } catch (e) {
+      console.error('기록 저장 실패:', e);
       reset();
+      Alert.alert('저장 실패', '기록 저장에 실패했습니다.\n잠시 후 다시 시도해주세요.');
     } finally {
       setSaving(false);
     }
