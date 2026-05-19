@@ -188,7 +188,7 @@ export function useRunTracking() {
 
     isPausedRef.current = false;
 
-    if (elapsed < 3) {
+    if (elapsed < 1) {
       setRunState('IDLE');
       return null;
     }
