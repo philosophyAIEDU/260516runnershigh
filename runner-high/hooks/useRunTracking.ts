@@ -188,20 +188,21 @@ export function useRunTracking() {
 
     isPausedRef.current = false;
 
-    if (elapsed < 1) {
+    if (startTimeRef.current === 0) {
       setRunState('IDLE');
       return null;
     }
 
     const currentMode = modeRef.current;
+    const safeDuration = Math.max(0, Math.floor(elapsed));
     const session: RunSession = {
       id: sessionIdRef.current,
       startTime: startTimeRef.current,
       endTime,
-      duration: Math.floor(elapsed),
+      duration: safeDuration,
       distance: distanceRef.current,
-      pace: calculatePace(distanceRef.current, Math.floor(elapsed)),
-      averageSpeed: calculateAverageSpeed(distanceRef.current, Math.floor(elapsed)),
+      pace: calculatePace(distanceRef.current, safeDuration),
+      averageSpeed: calculateAverageSpeed(distanceRef.current, safeDuration),
       coordinates: coordsRef.current,
       mode: currentMode,
       steps: currentMode !== 'cycling'
