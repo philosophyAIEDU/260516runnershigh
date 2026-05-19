@@ -55,13 +55,12 @@ export default function HomeScreen() {
   const handleRecord = useCallback(async () => {
     if (saving) return;
     setSaving(true);
-    const session = finish();
-    if (!session) {
-      reset();
-      setSaving(false);
-      return;
-    }
     try {
+      const session = finish();
+      if (!session) {
+        reset();
+        return;
+      }
       await addRun(session);
       setSummarySession(session);
       setSummaryVisible(true);
