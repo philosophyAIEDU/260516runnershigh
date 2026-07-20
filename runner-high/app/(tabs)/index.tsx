@@ -56,7 +56,7 @@ export default function HomeScreen() {
     if (saving) return;
     setSaving(true);
     try {
-      const session = finish();
+      const session = await finish();
       if (!session) {
         reset();
         return;
