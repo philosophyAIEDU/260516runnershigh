@@ -6,11 +6,6 @@ export async function requestLocationPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
-export async function requestBackgroundPermission(): Promise<boolean> {
-  const { status } = await Location.requestBackgroundPermissionsAsync();
-  return status === 'granted';
-}
-
 export function toCoordinate(loc: Location.LocationObject): Coordinate {
   return {
     latitude: loc.coords.latitude,
