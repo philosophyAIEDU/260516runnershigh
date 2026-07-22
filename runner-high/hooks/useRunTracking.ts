@@ -45,10 +45,15 @@ export function useRunTracking() {
   const draftTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionIdRef = useRef<string>('');
   const modeRef = useRef<ActivityMode>('running');
+  // 이번 세션이 실제로 백그라운드 태스크로 도는지 여부.
+  // 네이티브라도 Expo Go 등 백그라운드 미지원 환경이면 false로 남아
+  // 포그라운드 watchPositionAsync로 폴백한다.
+  const usingBackgroundRef = useRef<boolean>(false);
 
-  // 웹(포그라운드 watchPositionAsync) 폴백용 인메모리 상태 + 구독
-  const webTrackingRef = useRef<TrackingState>(createTrackingState());
-  const webSubRef = useRef<Location.LocationSubscription | null>(null);
+  // 포그라운드 watchPositionAsync 경로용 인메모리 상태 + 구독
+  // (웹 전용, 그리고 네이티브에서 백그라운드 시작 실패 시 폴백으로도 사용)
+  const foregroundTrackingRef = useRef<TrackingState>(createTrackingState());
+  const foregroundSubRef = useRef<Location.LocationSubscription | null>(null);
 
   const elapsedSeconds = useCallback(() => {
     return (Date.now() - startTimeRef.current) / 1000 - pausedDurationRef.current;
@@ -98,9 +103,10 @@ export function useRunTracking() {
     }
   }, []);
 
-  // 웹: 포그라운드 위치 구독 (백그라운드 미지원)
-  const startWebWatch = useCallback(async () => {
-    webSubRef.current = await Location.watchPositionAsync(
+  // 포그라운드 위치 구독. 웹의 기본 경로이자, 네이티브에서 백그라운드
+  // 태스크 시작이 실패했을 때(Expo Go, 권한 거부 등) 쓰는 폴백 경로.
+  const startForegroundWatch = useCallback(async () => {
+    foregroundSubRef.current = await Location.watchPositionAsync(
       {
         accuracy: Location.LocationAccuracy.BestForNavigation,
         timeInterval: 1000,
@@ -108,20 +114,26 @@ export function useRunTracking() {
       },
       (loc) => {
         const coord = toCoordinate(loc);
-        webTrackingRef.current = reduceLocation(webTrackingRef.current, coord, modeRef.current);
-        applyTracking(webTrackingRef.current);
+        foregroundTrackingRef.current = reduceLocation(
+          foregroundTrackingRef.current,
+          coord,
+          modeRef.current
+        );
+        applyTracking(foregroundTrackingRef.current);
       }
     );
   }, [applyTracking]);
 
-  const stopWebWatch = useCallback(() => {
-    webSubRef.current?.remove();
-    webSubRef.current = null;
+  const stopForegroundWatch = useCallback(() => {
+    foregroundSubRef.current?.remove();
+    foregroundSubRef.current = null;
   }, []);
 
   const startDraftSave = useCallback(() => {
     draftTimerRef.current = setInterval(async () => {
-      const ts = IS_NATIVE ? await readTrackingState() : webTrackingRef.current;
+      const ts = usingBackgroundRef.current
+        ? await readTrackingState()
+        : foregroundTrackingRef.current;
       await saveDraftRun({
         id: sessionIdRef.current,
         startTime: startTimeRef.current,
@@ -154,7 +166,8 @@ export function useRunTracking() {
       pauseStartRef.current = 0;
       isPausedRef.current = false;
       modeRef.current = activityMode;
-      webTrackingRef.current = createTrackingState();
+      foregroundTrackingRef.current = createTrackingState();
+      usingBackgroundRef.current = false;
 
       setMode(activityMode);
       setDuration(0);
@@ -168,15 +181,31 @@ export function useRunTracking() {
       setRunState('RUNNING');
       startTimer();
 
-      try {
-        if (IS_NATIVE) {
+      // 백그라운드 추적을 우선 시도하고(네이티브), 안 되면(Expo Go, 권한
+      // 거부 등) 조용히 포그라운드 GPS로 폴백한다 — 이 시작 단계에서
+      // 실패해 전체 기록이 중단되는 일이 없도록 한다.
+      let started = false;
+      if (IS_NATIVE) {
+        try {
           await startBackgroundTracking(activityMode);
+          usingBackgroundRef.current = true;
           startPoll();
-        } else {
-          await startWebWatch();
+          started = true;
+        } catch (e) {
+          console.warn('백그라운드 위치 추적 시작 실패, 포그라운드로 대체합니다:', e);
         }
-      } catch (e) {
-        console.error('위치 추적 시작 실패:', e);
+      }
+
+      if (!started) {
+        try {
+          await startForegroundWatch();
+          started = true;
+        } catch (e) {
+          console.error('위치 추적 시작 실패:', e);
+        }
+      }
+
+      if (!started) {
         stopTimer();
         setRunState('IDLE');
         return false;
@@ -185,7 +214,7 @@ export function useRunTracking() {
       startDraftSave();
       return true;
     },
-    [startTimer, stopTimer, startPoll, startWebWatch, startDraftSave]
+    [startTimer, stopTimer, startPoll, startForegroundWatch, startDraftSave]
   );
 
   const pause = useCallback(async () => {
@@ -193,41 +222,41 @@ export function useRunTracking() {
     pauseStartRef.current = Date.now();
     setRunState('PAUSED');
     stopTimer();
-    if (IS_NATIVE) {
+    if (usingBackgroundRef.current) {
       stopPoll();
       await pauseBackgroundTracking();
     } else {
-      stopWebWatch();
+      stopForegroundWatch();
       // 재개 시 정지 중 이동거리가 더해지지 않도록 기준점 초기화
-      webTrackingRef.current = { ...webTrackingRef.current, lastCoord: null };
+      foregroundTrackingRef.current = { ...foregroundTrackingRef.current, lastCoord: null };
     }
-  }, [stopTimer, stopPoll, stopWebWatch]);
+  }, [stopTimer, stopPoll, stopForegroundWatch]);
 
   const resume = useCallback(async () => {
     isPausedRef.current = false;
     pausedDurationRef.current += (Date.now() - pauseStartRef.current) / 1000;
     setRunState('RUNNING');
     startTimer();
-    if (IS_NATIVE) {
+    if (usingBackgroundRef.current) {
       await resumeBackgroundTracking();
       startPoll();
     } else {
-      await startWebWatch();
+      await startForegroundWatch();
     }
-  }, [startTimer, startPoll, startWebWatch]);
+  }, [startTimer, startPoll, startForegroundWatch]);
 
   const finish = useCallback(async (): Promise<RunSession | null> => {
     stopTimer();
     stopDraftSave();
 
     let finalState: TrackingState | null;
-    if (IS_NATIVE) {
+    if (usingBackgroundRef.current) {
       stopPoll();
       finalState = await stopBackgroundTracking();
       await clearTrackingState();
     } else {
-      stopWebWatch();
-      finalState = webTrackingRef.current;
+      stopForegroundWatch();
+      finalState = foregroundTrackingRef.current;
     }
     clearDraftRun();
 
@@ -272,7 +301,7 @@ export function useRunTracking() {
 
     setRunState('FINISHED');
     return session;
-  }, [stopTimer, stopPoll, stopDraftSave, stopWebWatch]);
+  }, [stopTimer, stopPoll, stopDraftSave, stopForegroundWatch]);
 
   const reset = useCallback(() => {
     setRunState('IDLE');
@@ -290,9 +319,9 @@ export function useRunTracking() {
       stopTimer();
       stopPoll();
       stopDraftSave();
-      stopWebWatch();
+      stopForegroundWatch();
     };
-  }, [stopTimer, stopPoll, stopDraftSave, stopWebWatch]);
+  }, [stopTimer, stopPoll, stopDraftSave, stopForegroundWatch]);
 
   return {
     runState,
