@@ -83,10 +83,17 @@ async function startUpdates(): Promise<void> {
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, UPDATE_OPTIONS);
 }
 
-// 새 세션 시작: 상태를 초기화하고 위치 업데이트를 켠다
-export async function startBackgroundTracking(mode: ActivityMode): Promise<void> {
+/**
+ * 앱이 실제로 백그라운드로 전환될 때만 호출된다(App State 브릿지).
+ * 포그라운드에서 이미 추적 중이던 상태(seed)를 이어받아, 화면이 꺼진
+ * 동안에도 네이티브 태스크가 같은 상태에 거리를 계속 누적하게 한다.
+ */
+export async function startBackgroundTracking(
+  mode: ActivityMode,
+  seed?: TrackingState
+): Promise<void> {
   const initial: PersistedTracking = {
-    ...createTrackingState(),
+    ...(seed ?? createTrackingState()),
     active: true,
     paused: false,
     mode,
@@ -95,39 +102,15 @@ export async function startBackgroundTracking(mode: ActivityMode): Promise<void>
   await startUpdates();
 }
 
-// 일시정지: 업데이트를 끄고, 재개 시 정지 중 이동거리가 더해지지 않도록 기준점 초기화
-export async function pauseBackgroundTracking(): Promise<void> {
-  await ensureUpdatesStopped();
-  const state = await readRaw();
-  if (!state) return;
-  await writeRaw({ ...state, paused: true, lastCoord: null });
-}
-
-// 재개: 상태 유지한 채 업데이트만 다시 켠다
-export async function resumeBackgroundTracking(): Promise<void> {
-  const state = await readRaw();
-  if (state) {
-    await writeRaw({ ...state, paused: false, active: true, lastCoord: null });
-  }
-  await startUpdates();
-}
-
-// 종료: 업데이트를 끄고 최종 상태를 반환한다
+// 포그라운드 복귀 시 호출: 업데이트를 끄고 백그라운드 동안 누적된 최종 상태를 반환한다
 export async function stopBackgroundTracking(): Promise<PersistedTracking | null> {
   await ensureUpdatesStopped();
   const state = await readRaw();
-  if (state) {
-    await writeRaw({ ...state, active: false, paused: false });
-  }
+  await AsyncStorage.removeItem(STATE_KEY);
   return state;
 }
 
-// UI 폴링/복구용: 현재 지속 상태 읽기
-export async function readTrackingState(): Promise<PersistedTracking | null> {
-  return readRaw();
-}
-
-// 세션 종료 후 지속 상태 정리
+// 세션 시작 전, 이전 세션이 비정상 종료로 남긴 상태를 정리
 export async function clearTrackingState(): Promise<void> {
   await AsyncStorage.removeItem(STATE_KEY);
 }
